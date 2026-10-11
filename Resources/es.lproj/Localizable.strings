@@ -1,18 +1,30 @@
 /* Spanish. Keys are the English text used in the code. Run `make strings` to find missing ones. */
 
-"%@ %lld" = "%@ %lld";
 "%lld of %lld" = "%lld de %lld";
+"%lld° down" = "%lld° abajo";
+"%lld° left" = "%lld° izq.";
+"%lld° right" = "%lld° der.";
+"%lld° up" = "%lld° arriba";
 "Account" = "Cuenta";
+"Aim down" = "Apuntar abajo";
+"Aim left" = "Apuntar a la izquierda";
+"Aim right" = "Apuntar a la derecha";
+"Aim up" = "Apuntar arriba";
 "Auto" = "Automático";
 "Both" = "Ambas";
 "Breeze" = "Breeze";
 "Can't reach Dreo" = "Sin conexión con Dreo";
+"Center" = "Centro";
 "Child lock" = "Bloqueo para niños";
 "Couldn't change the login item: %@" = "No pude cambiar el inicio automático: %@";
 "Create a password for your Google account" = "Crea una contraseña para tu cuenta de Google";
 "Custom" = "Personalizado";
+"Display" = "Pantalla";
 "Display light" = "Luz de la pantalla";
 "Done" = "Listo";
+"Drag an edge to change how far it sweeps" = "Arrastra un borde para cambiar hasta dónde oscila";
+"Drag an edge to change how wide it follows you" = "Arrastra un borde para cambiar qué tan ancho te sigue";
+"Drag the dot to aim the fan" = "Arrastra el punto para apuntar el ventilador";
 "Dreo Fan" = "Ventilador Dreo";
 "Dreo only lets other apps sign in with an email and password. Your Google account can have one, and you can keep using Google on your phone." = "Dreo solo deja entrar a otras apps con correo y contraseña. Tu cuenta de Google puede tener una, y en el celular sigues entrando con Google.";
 "Dreo said: %@" = "Dreo respondió: %@";
@@ -20,11 +32,15 @@
 "Email" = "Correo";
 "Enter the code sent to your email, choose a password and tap Finish" = "Escribe el código que llega a tu correo, elige la contraseña y toca Finalizar";
 "Fan" = "Ventilador";
+"Fan direction" = "Dirección del ventilador";
 "Fixed" = "Fija";
+"Follow" = "Seguir";
+"following you" = "siguiéndote";
+"Follows you across %lld°" = "Te sigue en %lld°";
 "Horizontal" = "Horizontal";
-"Horizontal angle" = "Ángulo horizontal";
 "I use Google to sign in" = "Entro con Google";
 "Keeps Breeze in the menu bar so you can control your fan without the window. Closing the window leaves it running there." = "Deja Breeze en la barra de menús para controlar el ventilador sin abrir la ventana. Al cerrar la ventana, sigue ahí.";
+"Level" = "Recto";
 "Light sensor" = "Sensor de luz";
 "Looking for your fans…" = "Buscando tus ventiladores…";
 "Manual" = "Manual";
@@ -43,6 +59,9 @@
 "Open Breeze to sign in." = "Abre Breeze para iniciar sesión.";
 "Open Dreo's guide" = "Ver la guía de Dreo";
 "Open the Dreo app on your phone and go to Profile" = "Abre la app Dreo del celular y ve a Perfil";
+"option.auto" = "Automática";
+"option.off" = "Apagada";
+"option.on" = "Encendida";
 "Options" = "Opciones";
 "Oscillate" = "Oscilar";
 "oscillating" = "oscilando";
@@ -77,7 +96,6 @@
 "Unofficial app, not affiliated with Dreo." = "App no oficial, sin relación con Dreo.";
 "Unofficial app, not affiliated with Dreo. Your login is stored in your Mac's Keychain." = "App no oficial, sin relación con Dreo. Tu sesión se guarda en el Llavero de tu Mac.";
 "Vertical" = "Vertical";
-"Vertical angle" = "Ángulo vertical";
 "Wrong email or password" = "Correo o contraseña incorrectos";
 "Your Dreo password changed. Please sign in again." = "Tu contraseña de Dreo cambió. Vuelve a iniciar sesión.";
 "Your Dreo session expired" = "La sesión de Dreo venció";

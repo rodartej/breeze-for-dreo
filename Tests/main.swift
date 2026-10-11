@@ -26,10 +26,13 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String, line: Int =
 
     expect(fan.speeds == 1...9, "reads the speed range from the model config")
     expect(fan.modes.count == 6, "reads the preset modes")
-    expect(fan.oscModes == ["Fixed", "Horizontal", "Vertical", "Both"], "knows the oscillation modes")
+    expect(fan.oscModes == ["Fixed", "Horizontal", "Vertical", "Both", "SmartFollow"], "knows the oscillation modes")
     expect(fan.horizontal?.range == -75...75 && fan.vertical?.step == 5, "reads the fixed-angle ranges")
     expect(fan.toggles.map(\.field).sorted() == ["childlock_switch", "mute_switch"], "reads the switches")
-    expect(fan.angle == (15, 0), "parses angles sent as strings")
+    expect(fan.angle == (15, 0) && fan.oscRange.left == -45, "parses angles sent as strings")
+    expect(fan.oscModes.last == "SmartFollow" && fan.followAngles == [30, 40, 50, 60, 70, 80, 90, 100],
+           "reads selects sent as a list (oscillation modes, follow widths)")
+    expect(fan.selects.map(\.directive) == ["lightmode"] && fan.followAngle == 60, "reads the display setting")
 
     store.step(3)
     store.send(["oscmode": "Both"])
@@ -44,6 +47,29 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String, line: Int =
     store.togglePower()
     await settle()
     expect(!fan.on && fan.angle == (-20, 10), "sets the angle and turns off")
+
+    // The demo cloud reports changes 3 s late (BREEZE_DEMO_LAG), like the real one.
+    store.send(["fixed_angle": ["H": 35, "V": 20]])
+    try? await Task.sleep(for: .seconds(2.6))  // the confirmation read comes back stale
+    expect(fan.angle == (35, 20), "a lagging cloud doesn't undo a new angle")
+    await settle()
+    await store.refresh()
+    expect(fan.angle == (35, 20), "keeps the angle once the cloud catches up")
+
+    store.send(["oscmode": "Both"])
+    store.send(["oscrange": ["L": -60, "R": 30, "U": 75, "D": -15]])
+    await settle()
+    await store.refresh()
+    let range = fan.oscRange
+    expect(fan.oscMode == "Both" && range.left == -60 && range.right == 30 && range.up == 75 && range.down == -15,
+           "sets the oscillation range")
+    expect(fan.sweep?.hSpacing == 30 && fan.sweep?.left?.range == -75...45, "reads the oscillation limits")
+
+    store.send(["oscmode": "SmartFollow"])
+    store.send(["hwfpangle": "90"])
+    await settle()
+    await store.refresh()
+    expect(fan.oscMode == "SmartFollow" && fan.followAngle == 90, "sets how wide SmartFollow follows")
 
     store.send(["mode": "Turbo"])
     await settle()

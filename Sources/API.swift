@@ -166,15 +166,38 @@ actor FakeDreo: DreoBackend {
                         "horizontal": ["range": [-75, 75], "step": 5],
                         "vertical": ["range": [-30, 90], "step": 5],
                     ],
+                    "oscrange": [
+                        "mode": "all", "horizontal_spacing": 30, "vertical_spacing": 30,
+                        "left": ["range": [-75, 45], "step": 5],
+                        "right": ["range": [-45, 75], "step": 5],
+                        "up": ["range": [0, 90], "step": 5],
+                        "down": ["range": [-30, 60], "step": 5],
+                    ],
+                ],
+                // Same shapes the real DR-HPF007S sends.
+                "select_entity_config": [
+                    ["selector": "DreoGenericModeSelect", "selector_mappings": [
+                        "attr_name": "Display", "directive_name": "lightmode", "options": ["Auto", "On", "Off"],
+                    ]],
+                    ["selector": "DreoGenericModeSelect", "selector_mappings": [
+                        "attr_name": "oscillation direction", "directive_name": "oscmode",
+                        "options": ["Fixed", "Horizontal", "Vertical", "Both", "SmartFollow"],
+                    ]],
+                    ["selector": "DreoGenericModeSelect", "selector_mappings": [
+                        "attr_name": "Hor Follow Angle", "directive_name": "hwfpangle",
+                        "options": ["30", "40", "50", "60", "70", "80", "90", "100"],
+                    ]],
                 ],
                 "toggle_entity_config": [
-                    "childlock": ["field": "childlock_switch", "labelName": "Child Lock"],
-                    "mute": ["field": "mute_switch", "labelName": "Mute", "operableWhenOff": true],
+                    "childlock": ["field": "childlock_switch", "labelName": "Child lock", "operableWhenOff": true],
+                    "mute": ["field": "mute_switch", "labelName": "Panel Sound"],
                 ],
             ],
             "state": [
                 "connected": true, "power_switch": true, "speed": 4, "mode": "Natural",
                 "oscmode": "Fixed", "fixed_angle": ["V": "0", "H": "15"],
+                "oscrange": ["L": "-45", "R": "45", "U": "90", "D": "-30"],
+                "hwfpangle": "60", "lightmode": "Auto",
                 "childlock_switch": false, "mute_switch": false,
             ],
         ],
@@ -202,9 +225,20 @@ actor FakeDreo: DreoBackend {
         return devicesData[index(sn)]["state"] as? JSON ?? [:]
     }
 
+    /// Seconds before a change shows up in `status`, like the real cloud (BREEZE_DEMO_LAG).
+    private let lag = Double(ProcessInfo.processInfo.environment["BREEZE_DEMO_LAG"] ?? "") ?? 0
+
     func control(_ sn: String, _ desired: JSON) async throws {
         try await Task.sleep(for: .milliseconds(300))
         log("demo \(sn): \(desired)")
+        guard lag > 0 else { return apply(sn, desired) }
+        Task {
+            try? await Task.sleep(for: .seconds(lag))
+            apply(sn, desired)
+        }
+    }
+
+    private func apply(_ sn: String, _ desired: JSON) {
         let i = index(sn)
         var state = devicesData[i]["state"] as? JSON ?? [:]
         state.merge(desired) { $1 }

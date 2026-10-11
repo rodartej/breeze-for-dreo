@@ -17,6 +17,21 @@ struct AngleRange {
     let step: Int
 }
 
+/// A setting with a few named options, such as the display light (Auto, On, Off).
+struct FanSelect: Identifiable {
+    let directive: String
+    let label: String
+    let icon: String
+    let options: [String]
+    var id: String { directive }
+}
+
+/// How far each edge of the oscillation can go, and the minimum span between edges.
+struct Sweep {
+    let left, right, up, down: AngleRange?
+    let hSpacing, vSpacing: Int
+}
+
 /// A fan as described by the cloud: capabilities come from the model's
 /// `config`, live values from `state`.
 final class Fan: Identifiable {
@@ -26,8 +41,11 @@ final class Fan: Identifiable {
     let speeds: ClosedRange<Int>?
     let modes: [String]
     let oscModes: [String]
-    let horizontal: AngleRange?
+    let horizontal: AngleRange?  // fixed-angle limits
     let vertical: AngleRange?
+    let sweep: Sweep?            // oscillation-range limits
+    let followAngles: [Int]      // SmartFollow widths, in degrees
+    let selects: [FanSelect]
     let toggles: [FanSwitch]
     var state: JSON
     var version = 0  // bumped on every command so stale reads are dropped
@@ -51,21 +69,40 @@ final class Fan: Identifiable {
         speeds = range.count >= 2 && range[0] < range[1] ? range[0]...range[1] : nil
         modes = fanConfig["preset_modes"] as? [String] ?? []
 
-        let selects = (config["select_entity_config"] as? JSON)?.values.compactMap { $0 as? JSON } ?? []
-        let oscSelect = selects.first { $0["directive_name"] as? String == "oscmode" }
-        oscModes = oscSelect?["options"] as? [String] ?? ["Fixed", "Horizontal", "Vertical", "Both"]
+        // Selects arrive as a list of {selector, selector_mappings}; older configs used a dictionary.
+        let selectConfigs = entries(config["select_entity_config"]).map { $0["selector_mappings"] as? JSON ?? $0 }
+        func options(_ directive: String) -> [String]? {
+            selectConfigs.first { $0["directive_name"] as? String == directive }?["options"] as? [String]
+        }
+        oscModes = options("oscmode") ?? ["Fixed", "Horizontal", "Vertical", "Both"]
+        followAngles = (options("hwfpangle") ?? []).compactMap { Int($0) }
+        selects = selectConfigs.compactMap { entry in
+            guard let directive = entry["directive_name"] as? String,
+                  !["oscmode", "hwfpangle"].contains(directive),  // shown in the oscillation card
+                  let options = entry["options"] as? [String], !options.isEmpty else { return nil }
+            let known = Fan.knownSelects[directive]
+            return FanSelect(directive: directive, label: known?.label ?? entry["attr_name"] as? String ?? directive,
+                             icon: known?.icon ?? "slider.horizontal.3", options: options)
+        }
 
-        func angle(_ key: String) -> AngleRange? {
-            let conf = (fanConfig["fixed_angle"] as? JSON)?[key] as? JSON
+        func angle(_ section: String, _ key: String) -> AngleRange? {
+            let conf = (fanConfig[section] as? JSON)?[key] as? JSON
             let bounds = (conf?["range"] as? [Any])?.compactMap(int) ?? []
             guard bounds.count == 2, bounds[0] < bounds[1] else { return nil }
             return AngleRange(range: bounds[0]...bounds[1], step: max(1, int(conf?["step"]) ?? 1))
         }
-        horizontal = angle("horizontal")
-        vertical = angle("vertical")
+        horizontal = angle("fixed_angle", "horizontal")
+        vertical = angle("fixed_angle", "vertical")
+        let osc = fanConfig["oscrange"] as? JSON
+        sweep = osc == nil ? nil : Sweep(
+            left: angle("oscrange", "left"), right: angle("oscrange", "right"),
+            up: angle("oscrange", "up"), down: angle("oscrange", "down"),
+            hSpacing: int(osc?["horizontal_spacing"]) ?? 0,
+            vSpacing: int(osc?["vertical_spacing"]) ?? 0
+        )
 
         let initial = state
-        let configured = (config["toggle_entity_config"] as? JSON)?.values.compactMap { $0 as? JSON } ?? []
+        let configured = entries(config["toggle_entity_config"])
         var toggles = configured.compactMap { entry -> FanSwitch? in
             guard let field = entry["field"] as? String else { return nil }
             let known = Fan.knownToggles[field]
@@ -85,6 +122,10 @@ final class Fan: Identifiable {
         self.toggles = toggles.sorted { $0.label < $1.label }
     }
 
+    static var knownSelects: [String: (label: String, icon: String)] {
+        ["lightmode": (String(localized: "Display"), "sun.max")]
+    }
+
     static var knownToggles: [String: (label: String, icon: String)] {
         [
             "childlock_switch": (String(localized: "Child lock"), "lock"),
@@ -100,10 +141,18 @@ final class Fan: Identifiable {
     var mode: String? { state["mode"] as? String }
     var oscillate: Bool? { bool(state["oscillate"]) }
     var oscMode: String? { state["oscmode"] as? String }
+    var followAngle: Int { int(state["hwfpangle"]) ?? followAngles.first ?? 60 }
 
+    /// Where the fan points in Fixed mode: negative is left/down, positive right/up.
     var angle: (h: Int, v: Int) {
         let value = state["fixed_angle"] as? JSON
         return (int(value?["H"]) ?? 0, int(value?["V"]) ?? 0)
+    }
+
+    /// The edges it sweeps between while oscillating.
+    var oscRange: (left: Int, right: Int, up: Int, down: Int) {
+        let value = state["oscrange"] as? JSON
+        return (int(value?["L"]) ?? -45, int(value?["R"]) ?? 45, int(value?["U"]) ?? 45, int(value?["D"]) ?? -15)
     }
 
     var summary: String {
@@ -112,11 +161,20 @@ final class Fan: Identifiable {
         var parts = [String(localized: "On")]
         if let speed { parts.append(String(localized: "speed \(speed)")) }
         if let mode { parts.append(modeLabel(mode).lowercased()) }
-        if (oscMode.map { $0 != "Fixed" } ?? false) || oscillate == true {
+        if oscMode?.lowercased() == "smartfollow" {
+            parts.append(String(localized: "following you"))
+        } else if (oscMode.map { $0.lowercased() != "fixed" } ?? false) || oscillate == true {
             parts.append(String(localized: "oscillating"))
         }
         return parts.joined(separator: " · ")
     }
+}
+
+/// Config sections come as a list or as a dictionary of entries, depending on the model.
+private func entries(_ value: Any?) -> [JSON] {
+    if let list = value as? [Any] { return list.compactMap { $0 as? JSON } }
+    if let dict = value as? JSON { return dict.keys.sorted().compactMap { dict[$0] as? JSON } }
+    return []
 }
 
 func modeLabel(_ mode: String) -> String {
@@ -148,7 +206,24 @@ func oscLabel(_ mode: String) -> String {
     case "horizontal": String(localized: "Horizontal")
     case "vertical": String(localized: "Vertical")
     case "both": String(localized: "Both")
+    case "smartfollow": String(localized: "Follow")
     default: mode.capitalized
+    }
+}
+
+func oscIcon(_ mode: String) -> String {
+    [
+        "fixed": "scope", "horizontal": "arrow.left.and.right", "vertical": "arrow.up.and.down",
+        "both": "arrow.up.and.down.and.arrow.left.and.right", "smartfollow": "figure.walk",
+    ][mode.lowercased()] ?? "fan.oscillation"
+}
+
+func optionLabel(_ option: String) -> String {
+    switch option.lowercased() {
+    case "auto": String(localized: "option.auto", defaultValue: "Auto")
+    case "on": String(localized: "option.on", defaultValue: "On")
+    case "off": String(localized: "option.off", defaultValue: "Off")
+    default: option.capitalized
     }
 }
 
@@ -175,6 +250,9 @@ final class Store: ObservableObject {
     private var queue: Task<Void, Never>?
     private var pendingRefresh: Task<Void, Never>?
     private var inFlight = 0  // commands sent but not yet answered
+    /// What we last asked for, per field. The cloud can lag a few seconds behind the fan,
+    /// so older readings of these fields are ignored until they match or expire.
+    private var expected: [String: (value: Any, until: Date)] = [:]
     private var defaults: UserDefaults { Store.defaults }
 
     var email: String { defaults.string(forKey: "email") ?? "" }
@@ -286,7 +364,7 @@ final class Store: ObservableObject {
         do {
             let state = try await api.status(fan.sn)
             if fan.version == version, inFlight == 0 {
-                fan.state.merge(state) { $1 }
+                fan.state.merge(settled(state)) { $1 }
                 changed()
             }
             message = nil
@@ -303,6 +381,8 @@ final class Store: ObservableObject {
         if turnOn, !fan.on, desired["power_switch"] == nil { desired["power_switch"] = true }
         fan.version += 1
         fan.state.merge(desired) { $1 }  // the UI reacts right away
+        let until = Date().addingTimeInterval(12)
+        for (key, value) in desired { expected[key] = (value, until) }
         message = nil
         changed()
         let command = desired
@@ -349,7 +429,31 @@ final class Store: ObservableObject {
         }
     }
 
+    /// Drops fields the cloud hasn't caught up on yet, so controls don't jump back.
+    private func settled(_ state: JSON) -> JSON {
+        var state = state
+        let now = Date()
+        for (key, wanted) in expected {
+            if now > wanted.until || same(state[key], wanted.value) {
+                expected[key] = nil
+            } else {
+                state[key] = nil
+            }
+        }
+        return state
+    }
+
     private func changed() { revision += 1 }
+}
+
+/// Compares cloud values loosely: the cloud sends numbers back as strings ("5" vs 5).
+func same(_ a: Any?, _ b: Any?) -> Bool {
+    if let a = a as? JSON, let b = b as? JSON {
+        return Set(a.keys) == Set(b.keys) && a.keys.allSatisfy { same(a[$0], b[$0]) }
+    }
+    if let x = int(a), let y = int(b) { return x == y }
+    if let x = a as? String, let y = b as? String { return x.caseInsensitiveCompare(y) == .orderedSame }
+    return bool(a) != nil && bool(a) == bool(b)
 }
 
 // MARK: - Keychain

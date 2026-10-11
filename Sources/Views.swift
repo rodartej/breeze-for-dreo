@@ -27,7 +27,41 @@ struct ContentView: View {
             }
         }
         .frame(width: 380)
+        .background(KeepTopEdge())  // grow and shrink downward; the top edge stays put
         .onAppear { NSApp.setActivationPolicy(.regular) }  // back in the Dock if it was menu-bar only
+    }
+}
+
+/// Keeps the window's top edge in place when its content changes height, so it grows
+/// and shrinks downward like a normal Mac window. (SwiftUI's `windowResizeAnchor` does
+/// this on macOS 26; this also works on macOS 15.)
+struct KeepTopEdge: NSViewRepresentable {
+    func makeNSView(context: Context) -> TopEdgeView { TopEdgeView() }
+    func updateNSView(_ view: TopEdgeView, context: Context) {}
+
+    final class TopEdgeView: NSView {
+        private var top: CGFloat?
+        private var observers: [NSObjectProtocol] = []
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window else { return }
+            top = window.frame.maxY
+            let center = NotificationCenter.default
+            observers.append(center.addObserver(forName: NSWindow.didResizeNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.restoreTop() }
+            })
+            observers.append(center.addObserver(forName: NSWindow.didMoveNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.top = self?.window?.frame.maxY }
+            })
+        }
+
+        private func restoreTop() {
+            guard let window, let top, abs(window.frame.maxY - top) > 0.5 else { return }
+            window.setFrameOrigin(NSPoint(x: window.frame.minX, y: top - window.frame.height))
+        }
     }
 }
 
@@ -159,12 +193,7 @@ struct ControlView: View {
             header
             PowerButton(fan: fan, size: 128) { store.togglePower() }
                 .padding(.top, 2)
-            Text(fan.summary).font(.callout).foregroundStyle(.secondary)
-            if let message = store.message {
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-            }
+            StatusLine(fan: fan)
             FanControls(fan: fan)
         }
         .padding(.horizontal, 18)
@@ -184,6 +213,33 @@ struct ControlView: View {
     }
 }
 
+/// The fan's state, or the last error, always on one line so nothing below it moves.
+struct StatusLine: View {
+    @EnvironmentObject var store: Store
+    let fan: Fan
+    var font: Font = .callout
+
+    var body: some View {
+        ZStack {
+            if let message = store.message {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .transition(.opacity)
+            } else {
+                Text(fan.summary)
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.opacity)
+                    .transition(.opacity)
+            }
+        }
+        .font(font)
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .animation(.easeInOut(duration: 0.2), value: store.message)
+        .animation(.easeInOut(duration: 0.2), value: fan.summary)
+    }
+}
+
 /// The cards shared by the window and the menu bar panel.
 struct FanControls: View {
     @EnvironmentObject var store: Store
@@ -196,8 +252,8 @@ struct FanControls: View {
                 SpeedCard(speed: fan.speed, range: speeds, on: fan.on)
             }
             if !fan.modes.isEmpty { ModeCard(fan: fan) }
-            if fan.oscMode != nil || fan.oscillate != nil { OscillationCard(fan: fan, showAngles: !compact) }
-            if !compact, !fan.toggles.isEmpty { SwitchesCard(fan: fan) }
+            if fan.oscMode != nil || fan.oscillate != nil { OscillationCard(fan: fan, showAim: !compact) }
+            if !compact, !fan.toggles.isEmpty || !fan.selects.isEmpty { SwitchesCard(fan: fan) }
         }
         .disabled(!fan.online)
     }
@@ -402,6 +458,7 @@ struct ModeCard: View {
                     .buttonStyle(.plain)
                 }
             }
+            .animation(.snappy(duration: 0.2), value: fan.mode)
         }
     }
 }
@@ -409,18 +466,34 @@ struct ModeCard: View {
 struct OscillationCard: View {
     @EnvironmentObject var store: Store
     let fan: Fan
-    var showAngles = true
+    var showAim = true
 
     var body: some View {
         Card(title: "Oscillation", icon: "fan.oscillation") {
             if let current = fan.oscMode {
-                Picker("Oscillation", selection: Binding(get: { current }, set: { store.send(["oscmode": $0]) })) {
-                    ForEach(fan.oscModes, id: \.self) { Text(oscLabel($0)).tag($0) }
+                HStack(spacing: 6) {
+                    ForEach(fan.oscModes, id: \.self) { option in
+                        let selected = option.lowercased() == current.lowercased()
+                        Button { store.send(["oscmode": option]) } label: {
+                            VStack(spacing: 3) {
+                                Image(systemName: oscIcon(option)).font(.system(size: 14)).frame(height: 18)
+                                Text(oscLabel(option)).font(.caption2).lineLimit(1).minimumScaleFactor(0.7)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 42)
+                            .foregroundStyle(selected ? Color.white : Color.primary)
+                            .background(
+                                selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary),
+                                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                    }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                if showAngles, current.lowercased() == "fixed", fan.on, fan.horizontal != nil || fan.vertical != nil {
-                    AngleSliders(fan: fan)
+                .animation(.snappy(duration: 0.2), value: current)
+                if showAim, fan.horizontal != nil || fan.vertical != nil || fan.sweep != nil {
+                    DirectionPad(fan: fan, mode: current)
                 }
             } else if let oscillate = fan.oscillate {
                 HStack {
@@ -435,54 +508,333 @@ struct OscillationCard: View {
     }
 }
 
-struct AngleSliders: View {
+/// Shows and sets where the fan points. In Fixed mode you drag the dot to aim it.
+/// While oscillating, the shaded area is what it sweeps, and you drag an edge to change it.
+/// Left/right is the horizontal angle, up/down the vertical one.
+struct DirectionPad: View {
     @EnvironmentObject var store: Store
     let fan: Fan
-    @State private var horizontal = 0.0
-    @State private var vertical = 0.0
+    let mode: String
+    @State private var h = 0
+    @State private var v = 0
+    @State private var sweep = (left: -45, right: 45, up: 45, down: -15)
+    @State private var edge: Edge?
+    @State private var dragging = false
     @State private var pending: Task<Void, Never>?
 
+    private enum Edge { case left, right, up, down }
+    private static let inset: CGFloat = 13
+
+    @State private var follow = 60
+
+    private var fixed: Bool { mode.lowercased() == "fixed" }
+    private var following: Bool { mode.lowercased() == "smartfollow" }
+    private var sweepsH: Bool { ["horizontal", "both"].contains(mode.lowercased()) }
+    private var sweepsV: Bool { ["vertical", "both"].contains(mode.lowercased()) }
+
+    /// The pad covers every angle the fan can reach, aimed or sweeping.
+    private var hSpan: ClosedRange<Int> { span(fan.horizontal?.range, fan.sweep?.left?.range, fan.sweep?.right?.range) }
+    private var vSpan: ClosedRange<Int> { span(fan.vertical?.range, fan.sweep?.down?.range, fan.sweep?.up?.range) }
+
     var body: some View {
-        VStack(spacing: 6) {
-            if let range = fan.horizontal { row("Horizontal angle", "arrow.left.and.right", $horizontal, range) }
-            if let range = fan.vertical { row("Vertical angle", "arrow.up.and.down", $vertical, range) }
+        VStack(spacing: 8) {
+            GeometryReader { geo in
+                let size = geo.size
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary)
+                    crosshair(in: size)
+                    if fixed { aimDot(in: size) } else { sweepArea(in: size) }
+                }
+                .contentShape(Rectangle())
+                .gesture(drag(in: size))
+                .accessibilityElement()
+                .accessibilityLabel(Text("Fan direction"))
+                .accessibilityValue(Text(verbatim: readoutText))
+            }
+            .frame(height: 104)
+
+            readout
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(height: 20)
+
+            Group {
+                if fixed {
+                    Text("Drag the dot to aim the fan")
+                } else if following {
+                    Text("Drag an edge to change how wide it follows you")
+                } else {
+                    Text("Drag an edge to change how far it sweeps")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.top, 4)
         .onAppear(perform: sync)
-        .onChange(of: store.revision) { if pending == nil { sync() } }
+        .onChange(of: store.revision) { if !dragging, pending == nil { sync() } }
+        .onChange(of: mode) { sync() }
     }
+
+    // MARK: drawing
+
+    private func crosshair(in size: CGSize) -> some View {
+        let center = point(h: 0, v: 0, in: size)
+        return Path { path in
+            path.move(to: CGPoint(x: center.x, y: 6))
+            path.addLine(to: CGPoint(x: center.x, y: size.height - 6))
+            path.move(to: CGPoint(x: 6, y: center.y))
+            path.addLine(to: CGPoint(x: size.width - 6, y: center.y))
+        }
+        .stroke(.tertiary, style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+    }
+
+    private func aimDot(in size: CGSize) -> some View {
+        Circle()
+            .fill(Color.accentColor)
+            .overlay(Circle().stroke(.white, lineWidth: 2))
+            .frame(width: 18, height: 18)
+            .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+            .scaleEffect(dragging ? 1.2 : 1)
+            .position(point(h: h, v: v, in: size))
+            .animation(dragging ? nil : .snappy(duration: 0.25), value: h)
+            .animation(dragging ? nil : .snappy(duration: 0.25), value: v)
+            .animation(.snappy(duration: 0.15), value: dragging)
+    }
+
+    @ViewBuilder
+    private func sweepArea(in size: CGSize) -> some View {
+        let rect = sweepRect(in: size)
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(Color.accentColor.opacity(0.22))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(Color.accentColor.opacity(0.8), lineWidth: 1.5))
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
+            .animation(dragging ? nil : .snappy(duration: 0.25), value: rect)
+        if sweepsH || following {
+            handle(width: 5, height: 24).position(x: rect.minX, y: rect.midY)
+            handle(width: 5, height: 24).position(x: rect.maxX, y: rect.midY)
+        }
+        if sweepsV {
+            handle(width: 24, height: 5).position(x: rect.midX, y: rect.minY)
+            handle(width: 24, height: 5).position(x: rect.midX, y: rect.maxY)
+        }
+        if fan.on {  // a dot going back and forth, like the fan
+            TimelineView(.animation) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 10, height: 10)
+                    .position(
+                        x: sweepsH || following ? rect.midX + CGFloat(sin(t * .pi / 3)) * rect.width / 2 : rect.midX,
+                        y: sweepsV ? rect.midY + CGFloat(sin(t * .pi / 4)) * rect.height / 2 : rect.midY
+                    )
+            }
+        }
+    }
+
+    private func handle(width: CGFloat, height: CGFloat) -> some View {
+        Capsule().fill(.white).frame(width: width, height: height).shadow(color: .black.opacity(0.25), radius: 1.5)
+    }
+
+    @ViewBuilder
+    private var readout: some View {
+        HStack(spacing: 4) {
+            if fixed {
+                nudge("chevron.left", "Aim left") { h -= fan.horizontal?.step ?? 5 }
+                Text(horizontalText(h)).frame(minWidth: 84)
+                nudge("chevron.right", "Aim right") { h += fan.horizontal?.step ?? 5 }
+                Spacer()
+                nudge("chevron.down", "Aim down") { v -= fan.vertical?.step ?? 5 }
+                Text(verticalText(v)).frame(minWidth: 84)
+                nudge("chevron.up", "Aim up") { v += fan.vertical?.step ?? 5 }
+            } else if following {
+                Label { Text("Follows you across \(follow)°") } icon: { Image(systemName: "figure.walk") }
+                Spacer()
+            } else {
+                if sweepsH {
+                    Label { Text(verbatim: "\(horizontalText(sweep.left)) – \(horizontalText(sweep.right))") }
+                        icon: { Image(systemName: "arrow.left.and.right") }
+                }
+                Spacer(minLength: 8)
+                if sweepsV {
+                    Label { Text(verbatim: "\(verticalText(sweep.down)) – \(verticalText(sweep.up))") }
+                        icon: { Image(systemName: "arrow.up.and.down") }
+                }
+            }
+        }
+    }
+
+    private var readoutText: String {
+        if fixed { return "\(horizontalText(h)), \(verticalText(v))" }
+        if following { return String(localized: "Follows you across \(follow)°") }
+        return "\(horizontalText(sweep.left)) – \(horizontalText(sweep.right)), \(verticalText(sweep.down)) – \(verticalText(sweep.up))"
+    }
+
+    private func nudge(_ icon: String, _ label: LocalizedStringKey, _ change: @escaping () -> Void) -> some View {
+        Button {
+            change()
+            h = clamp(h, fan.horizontal?.range ?? hSpan)
+            v = clamp(v, fan.vertical?.range ?? vSpan)
+            commit(after: 0.4)  // several quick taps become one command
+        } label: {
+            Image(systemName: icon).frame(width: 20, height: 20).contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(Text(label))
+        .accessibilityLabel(Text(label))
+    }
+
+    // MARK: geometry
+
+    private func span(_ ranges: ClosedRange<Int>?...) -> ClosedRange<Int> {
+        let all = ranges.compactMap { $0 }
+        guard let low = all.map(\.lowerBound).min(), let high = all.map(\.upperBound).max(), low < high else {
+            return -1...1
+        }
+        return low...high
+    }
+
+    private func x(_ h: Int, _ size: CGSize) -> CGFloat {
+        let fraction = CGFloat(h - hSpan.lowerBound) / CGFloat(hSpan.upperBound - hSpan.lowerBound)
+        return Self.inset + fraction * (size.width - 2 * Self.inset)
+    }
+
+    private func y(_ v: Int, _ size: CGSize) -> CGFloat {
+        let fraction = CGFloat(v - vSpan.lowerBound) / CGFloat(vSpan.upperBound - vSpan.lowerBound)
+        return Self.inset + (1 - fraction) * (size.height - 2 * Self.inset)
+    }
+
+    private func point(h: Int, v: Int, in size: CGSize) -> CGPoint {
+        CGPoint(x: x(h, size), y: y(v, size))
+    }
+
+    /// The angle under a point, rounded to the fan's step.
+    private func angles(at point: CGPoint, in size: CGSize) -> (h: Int, v: Int) {
+        func value(_ fraction: CGFloat, _ span: ClosedRange<Int>, _ step: Int) -> Int {
+            let raw = Double(span.lowerBound) + Double(min(1, max(0, fraction))) * Double(span.upperBound - span.lowerBound)
+            return Int((raw / Double(step)).rounded()) * step
+        }
+        return (
+            value((point.x - Self.inset) / (size.width - 2 * Self.inset), hSpan, fan.horizontal?.step ?? 5),
+            value(1 - (point.y - Self.inset) / (size.height - 2 * Self.inset), vSpan, fan.vertical?.step ?? 5)
+        )
+    }
+
+    private func sweepRect(in size: CGSize) -> CGRect {
+        let left = following ? x(-follow / 2, size) : sweepsH ? x(sweep.left, size) : Self.inset
+        let right = following ? x(follow / 2, size) : sweepsH ? x(sweep.right, size) : size.width - Self.inset
+        let top = sweepsV ? y(sweep.up, size) : Self.inset
+        let bottom = sweepsV ? y(sweep.down, size) : size.height - Self.inset
+        return CGRect(x: left, y: top, width: max(0, right - left), height: max(0, bottom - top))
+    }
+
+    private func clamp(_ value: Int, _ range: ClosedRange<Int>?) -> Int {
+        guard let range else { return value }
+        return min(range.upperBound, max(range.lowerBound, value))
+    }
+
+    // MARK: dragging
+
+    private func drag(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { gesture in
+                dragging = true
+                if fixed {
+                    aim(at: gesture.location, in: size)
+                } else {
+                    if edge == nil { edge = nearestEdge(to: gesture.startLocation, in: size) }
+                    if let edge { move(edge, to: gesture.location, in: size) }
+                }
+            }
+            .onEnded { gesture in
+                if fixed { aim(at: gesture.location, in: size) }
+                dragging = false
+                edge = nil
+                commit(after: 0)
+            }
+    }
+
+    private func aim(at location: CGPoint, in size: CGSize) {
+        let target = angles(at: location, in: size)
+        h = clamp(target.h, fan.horizontal?.range)
+        v = clamp(target.v, fan.vertical?.range)
+    }
+
+    private func nearestEdge(to point: CGPoint, in size: CGSize) -> Edge? {
+        var edges: [(Edge, CGFloat)] = []
+        if following { return point.x < x(0, size) ? .left : .right }
+        if sweepsH {
+            edges += [(.left, abs(point.x - x(sweep.left, size))), (.right, abs(point.x - x(sweep.right, size)))]
+        }
+        if sweepsV {
+            edges += [(.up, abs(point.y - y(sweep.up, size))), (.down, abs(point.y - y(sweep.down, size)))]
+        }
+        return edges.min { $0.1 < $1.1 }?.0
+    }
+
+    /// Moves one edge, keeping it inside its limits and the minimum span from the other edge.
+    private func move(_ edge: Edge, to location: CGPoint, in size: CGSize) {
+        let target = angles(at: location, in: size)
+        if following {  // both edges move together, snapped to the widths the fan offers
+            let width = 2 * abs(target.h)
+            follow = fan.followAngles.min { abs($0 - width) < abs($1 - width) } ?? follow
+            return
+        }
+        let limits = fan.sweep
+        switch edge {
+        case .left:
+            sweep.left = min(clamp(target.h, limits?.left?.range), sweep.right - (limits?.hSpacing ?? 0))
+        case .right:
+            sweep.right = max(clamp(target.h, limits?.right?.range), sweep.left + (limits?.hSpacing ?? 0))
+        case .up:
+            sweep.up = max(clamp(target.v, limits?.up?.range), sweep.down + (limits?.vSpacing ?? 0))
+        case .down:
+            sweep.down = min(clamp(target.v, limits?.down?.range), sweep.up - (limits?.vSpacing ?? 0))
+        }
+    }
+
+    // MARK: syncing
 
     private func sync() {
-        horizontal = Double(fan.angle.h)
-        vertical = Double(fan.angle.v)
+        (h, v) = fan.angle
+        let range = fan.oscRange
+        sweep = (range.left, range.right, range.up, range.down)
+        follow = fan.followAngle
     }
 
-    private func row(_ title: LocalizedStringKey, _ icon: String, _ value: Binding<Double>, _ range: AngleRange) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon).frame(width: 18).foregroundStyle(.secondary)
-            Slider(
-                value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = $0; commitSoon() }),
-                in: Double(range.range.lowerBound)...Double(range.range.upperBound),
-                step: Double(range.step)
-            )
-            Text(verbatim: "\(Int(value.wrappedValue))°")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .trailing)
-        }
-        .help(Text(title))
-        .accessibilityLabel(Text(title))
-    }
-
-    private func commitSoon() {
+    private func commit(after delay: Double) {
         pending?.cancel()
         pending = Task {
-            try? await Task.sleep(for: .milliseconds(450))
+            try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             pending = nil
-            store.send(["fixed_angle": ["H": Int(horizontal), "V": Int(vertical)]])
+            if !fan.on { store.send(["power_switch": true]) }  // the fan only takes a direction while on
+            if fixed {
+                var angle: JSON = [:]
+                if fan.horizontal != nil { angle["H"] = h }
+                if fan.vertical != nil { angle["V"] = v }
+                store.send(["fixed_angle": angle])
+            } else if following {
+                store.send(["hwfpangle": String(follow)])  // the cloud lists these widths as text
+            } else {
+                store.send(["oscrange": ["L": sweep.left, "R": sweep.right, "U": sweep.up, "D": sweep.down]])
+            }
         }
     }
+}
+
+func horizontalText(_ degrees: Int) -> String {
+    if degrees == 0 { return String(localized: "Center") }
+    return degrees < 0 ? String(localized: "\(-degrees)° left") : String(localized: "\(degrees)° right")
+}
+
+func verticalText(_ degrees: Int) -> String {
+    if degrees == 0 { return String(localized: "Level") }
+    return degrees < 0 ? String(localized: "\(-degrees)° down") : String(localized: "\(degrees)° up")
 }
 
 struct SwitchesCard: View {
@@ -491,6 +843,21 @@ struct SwitchesCard: View {
 
     var body: some View {
         Card(title: "Options", icon: "switch.2") {
+            ForEach(fan.selects) { item in
+                HStack {
+                    Label(item.label, systemImage: item.icon)
+                    Spacer()
+                    Picker(item.label, selection: Binding(
+                        get: { fan.state[item.directive] as? String ?? item.options[0] },
+                        set: { store.send([item.directive: $0], turnOn: false) }
+                    )) {
+                        ForEach(item.options, id: \.self) { Text(optionLabel($0)).tag($0) }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                }
+            }
             ForEach(fan.toggles) { item in
                 HStack {
                     Label(item.label, systemImage: item.icon)

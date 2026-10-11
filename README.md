@@ -14,8 +14,9 @@ Unofficial: not affiliated with Dreo.
 ## Features
 
 - Power, speed and preset modes (Normal, Natural, Sleep, Auto, Turbo, Custom…)
-- Oscillation: fixed, horizontal, vertical or both, with fixed-angle sliders on models that have them
-- Child lock, mute beeps and the other switches your model reports
+- Oscillation: fixed, horizontal, vertical, both or SmartFollow
+- A direction pad that shows where the fan points ("15° right, level") and lets you aim it, set how far it sweeps or how wide it follows you
+- Display light, child lock, mute beeps and the other settings your model reports
 - Optional menu bar icon with compact controls
 - Several fans on one account
 - Keyboard shortcuts: ⌘↩ power, ⌘↑ / ⌘↓ speed, ⌘R refresh

@@ -46,14 +46,9 @@ struct MenuBarPanel: View {
                     PowerButton(fan: fan, size: 46) { store.togglePower() }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(fan.name).font(.headline).lineLimit(1)
-                        Text(fan.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        StatusLine(fan: fan, font: .caption)
                     }
                     Spacer(minLength: 0)
-                }
-                if let message = store.message {
-                    Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
                 }
                 FanControls(fan: fan, compact: true).id(fan.sn)
             } else {

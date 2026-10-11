@@ -12,8 +12,9 @@ No oficial: no tiene relación con Dreo.
 ## Qué hace
 
 - Encender y apagar, velocidad y modos (Normal, Natural, Dormir, Automático, Turbo, Personalizado…)
-- Oscilación fija, horizontal, vertical o ambas, con ángulo fijo en los modelos que lo tienen
-- Bloqueo para niños, silenciar pitidos y los demás interruptores que reporte tu modelo
+- Oscilación fija, horizontal, vertical, ambas o Seguir (SmartFollow)
+- Un panel de dirección que muestra hacia dónde apunta el ventilador ("15° der., recto") y te deja apuntarlo, elegir hasta dónde oscila o qué tan ancho te sigue
+- Luz de la pantalla, bloqueo para niños, silenciar pitidos y los demás ajustes que reporte tu modelo
 - Ícono opcional en la barra de menús con controles rápidos
 - Varios ventiladores en la misma cuenta
 - Atajos: ⌘↩ encender o apagar, ⌘↑ / ⌘↓ velocidad, ⌘R actualizar

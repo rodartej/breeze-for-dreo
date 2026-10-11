@@ -4,8 +4,10 @@
 
 First release.
 
-- Power, speed, preset modes and oscillation (fixed, horizontal, vertical, both) with fixed-angle sliders.
-- Child lock, mute beeps and other switches each model reports.
+- Power, speed, preset modes and oscillation (fixed, horizontal, vertical, both, SmartFollow).
+- Direction pad: see where the fan points, aim it, set the sweep range or the SmartFollow width.
+- Display light, child lock, mute beeps and other settings each model reports.
+- Controls don't jump back while Dreo's cloud catches up; the window grows downward.
 - Optional menu bar icon with compact controls.
 - Several fans per account.
 - English and Spanish.
