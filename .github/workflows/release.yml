@@ -1,0 +1,27 @@
+name: Release
+
+# Push a tag like v1.0.0 (matching CFBundleShortVersionString in Resources/Info.plist).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches the app version
+        run: |
+          version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME != v$version"; exit 1; }
+      - name: Test
+        run: make test
+      - name: Build (universal)
+        run: scripts/build.sh --universal --zip
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" .build/*.zip --title "$GITHUB_REF_NAME" --generate-notes

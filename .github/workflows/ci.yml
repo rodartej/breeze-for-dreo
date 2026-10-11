@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: make test
+      - name: Check translations
+        run: make strings
+      - name: Build (universal)
+        run: scripts/build.sh --universal --zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Breeze-for-Dreo
+          path: .build/*.zip
