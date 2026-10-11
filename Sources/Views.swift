@@ -300,8 +300,36 @@ struct AppBadge: View {
         RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
             .fill(brandGradient)
             .frame(width: size, height: size)
-            .overlay(Image(systemName: "fan.fill").font(.system(size: size * 0.5)).foregroundStyle(.white))
+            .overlay {
+                ZStack {
+                    FanBlades().fill(.white)
+                    Circle().fill(.white).frame(width: size * 0.11)
+                    Circle().fill(Color(red: 0.14, green: 0.55, blue: 0.93)).frame(width: size * 0.06)
+                }
+                .frame(width: size * 0.54, height: size * 0.54)
+            }
             .shadow(color: .blue.opacity(0.3), radius: 8, y: 4)
+    }
+}
+
+/// The app's own fan drawing, used for the icon and the sign-in badge. Apple's license
+/// doesn't allow SF Symbols in app icons or logos (they're fine inside the UI).
+/// Same geometry as `bladesPath` in scripts/make-icon.swift.
+struct FanBlades: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let c = CGPoint(x: rect.midX, y: rect.midY), r = min(rect.width, rect.height) / 2
+        func p(_ x: CGFloat, _ y: CGFloat, _ a: CGFloat) -> CGPoint {
+            CGPoint(x: c.x + r * (x * cos(a) - y * sin(a)), y: c.y - r * (x * sin(a) + y * cos(a)))
+        }
+        for i in 0..<4 {
+            let a = CGFloat(i) * .pi / 2
+            path.move(to: p(0.10, 0.10, a))
+            path.addCurve(to: p(0.88, 0.30, a), control1: p(0.18, 0.62, a), control2: p(0.70, 0.66, a))
+            path.addCurve(to: p(0.14, -0.08, a), control1: p(1.02, 0.04, a), control2: p(0.62, -0.20, a))
+            path.closeSubpath()
+        }
+        return path
     }
 }
 
