@@ -17,7 +17,7 @@ No oficial: no tiene relación con Dreo.
 - Luz de la pantalla, bloqueo para niños, silenciar pitidos y los demás ajustes que reporte tu modelo
 - Ícono opcional en la barra de menús con controles rápidos
 - Varios ventiladores en la misma cuenta
-- Atajos: ⌘↩ encender o apagar, ⌘↑ / ⌘↓ velocidad, ⌘R actualizar
+- Atajos: ⌘↩ encender o apagar, ⌘↑ / ⌘↓ velocidad, ⌘R actualizar. Haz clic en el panel de dirección y usa las flechas para apuntar de 5° en 5° (Shift para 15°)
 - Inglés y español, según el idioma de tu Mac
 - Tu sesión se guarda en el Llavero de macOS
 

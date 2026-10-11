@@ -526,6 +526,7 @@ struct DirectionPad: View {
     private static let inset: CGFloat = 13
 
     @State private var follow = 60
+    @FocusState private var focused: Bool  // after a click, the arrow keys move the dot
 
     private var fixed: Bool { mode.lowercased() == "fixed" }
     private var following: Bool { mode.lowercased() == "smartfollow" }
@@ -546,6 +547,30 @@ struct DirectionPad: View {
                     if fixed { aimDot(in: size) } else { sweepArea(in: size) }
                 }
                 .contentShape(Rectangle())
+                .focusable()
+                .focusEffectDisabled()
+                .focused($focused)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.accentColor, lineWidth: 2)
+                        .opacity(focused && fixed ? 0.9 : 0)
+                        .animation(.easeOut(duration: 0.15), value: focused)
+                )
+                .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                    guard fixed else { return .ignored }
+                    let steps = press.modifiers.contains(.shift) ? 3 : 1  // Shift moves faster
+                    switch press.key {
+                    case .leftArrow: step(h: -steps)
+                    case .rightArrow: step(h: steps)
+                    case .upArrow: step(v: steps)
+                    default: step(v: -steps)
+                    }
+                    return .handled
+                }
+                .onKeyPress(.escape) {
+                    focused = false
+                    return .handled
+                }
                 .gesture(drag(in: size))
                 .accessibilityElement()
                 .accessibilityLabel(Text("Fan direction"))
@@ -562,7 +587,7 @@ struct DirectionPad: View {
 
             Group {
                 if fixed {
-                    Text("Drag the dot to aim the fan")
+                    Text("Drag the dot, or click and use the arrow keys")
                 } else if following {
                     Text("Drag an edge to change how wide it follows you")
                 } else {
@@ -644,13 +669,13 @@ struct DirectionPad: View {
     private var readout: some View {
         HStack(spacing: 4) {
             if fixed {
-                nudge("chevron.left", "Aim left") { h -= fan.horizontal?.step ?? 5 }
+                nudge("chevron.left", "Aim left") { step(h: -1) }
                 Text(horizontalText(h)).frame(minWidth: 84)
-                nudge("chevron.right", "Aim right") { h += fan.horizontal?.step ?? 5 }
+                nudge("chevron.right", "Aim right") { step(h: 1) }
                 Spacer()
-                nudge("chevron.down", "Aim down") { v -= fan.vertical?.step ?? 5 }
+                nudge("chevron.down", "Aim down") { step(v: -1) }
                 Text(verticalText(v)).frame(minWidth: 84)
-                nudge("chevron.up", "Aim up") { v += fan.vertical?.step ?? 5 }
+                nudge("chevron.up", "Aim up") { step(v: 1) }
             } else if following {
                 Label { Text("Follows you across \(follow)°") } icon: { Image(systemName: "figure.walk") }
                 Spacer()
@@ -674,13 +699,15 @@ struct DirectionPad: View {
         return "\(horizontalText(sweep.left)) – \(horizontalText(sweep.right)), \(verticalText(sweep.down)) – \(verticalText(sweep.up))"
     }
 
-    private func nudge(_ icon: String, _ label: LocalizedStringKey, _ change: @escaping () -> Void) -> some View {
-        Button {
-            change()
-            h = clamp(h, fan.horizontal?.range ?? hSpan)
-            v = clamp(v, fan.vertical?.range ?? vSpan)
-            commit(after: 0.4)  // several quick taps become one command
-        } label: {
+    /// Moves the aim by whole steps (5° on most fans). Quick repeats become one command.
+    private func step(h dh: Int = 0, v dv: Int = 0) {
+        h = clamp(h + dh * (fan.horizontal?.step ?? 5), fan.horizontal?.range ?? hSpan)
+        v = clamp(v + dv * (fan.vertical?.step ?? 5), fan.vertical?.range ?? vSpan)
+        commit(after: 0.4)
+    }
+
+    private func nudge(_ icon: String, _ label: LocalizedStringKey, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             Image(systemName: icon).frame(width: 20, height: 20).contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
@@ -743,6 +770,7 @@ struct DirectionPad: View {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
                 dragging = true
+                focused = true
                 if fixed {
                     aim(at: gesture.location, in: size)
                 } else {

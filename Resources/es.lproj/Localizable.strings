@@ -24,7 +24,7 @@
 "Done" = "Listo";
 "Drag an edge to change how far it sweeps" = "Arrastra un borde para cambiar hasta dónde oscila";
 "Drag an edge to change how wide it follows you" = "Arrastra un borde para cambiar qué tan ancho te sigue";
-"Drag the dot to aim the fan" = "Arrastra el punto para apuntar el ventilador";
+"Drag the dot, or click and use the arrow keys" = "Arrastra el punto, o haz clic y usa las flechas";
 "Dreo Fan" = "Ventilador Dreo";
 "Dreo only lets other apps sign in with an email and password. Your Google account can have one, and you can keep using Google on your phone." = "Dreo solo deja entrar a otras apps con correo y contraseña. Tu cuenta de Google puede tener una, y en el celular sigues entrando con Google.";
 "Dreo said: %@" = "Dreo respondió: %@";

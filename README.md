@@ -19,7 +19,7 @@ Unofficial: not affiliated with Dreo.
 - Display light, child lock, mute beeps and the other settings your model reports
 - Optional menu bar icon with compact controls
 - Several fans on one account
-- Keyboard shortcuts: ⌘↩ power, ⌘↑ / ⌘↓ speed, ⌘R refresh
+- Keyboard shortcuts: ⌘↩ power, ⌘↑ / ⌘↓ speed, ⌘R refresh. Click the direction pad and use the arrow keys to aim in 5° steps (Shift for 15°)
 - English and Spanish, following your Mac's language
 - Your login stays in the macOS Keychain
 
