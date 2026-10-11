@@ -9,14 +9,16 @@ jobs:
   build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Test
         run: make test
       - name: Check translations
         run: make strings
       - name: Build (universal)
         run: scripts/build.sh --universal --zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Breeze-for-Dreo
           path: .build/*.zip
+          include-hidden-files: true  # .build is a dot folder
+          if-no-files-found: error
